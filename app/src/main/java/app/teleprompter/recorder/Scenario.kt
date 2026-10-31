@@ -24,6 +24,17 @@ data class Scenario(
         else text.split('\n').map { it.trim() }.filter { it.isNotEmpty() }
 
     fun wordCount(): Int = blocks().sumOf { b -> b.split(Regex("""\s+""")).count { it.isNotEmpty() } }
+
+    /** Subtitles know their own length, plain text is estimated from the reading speed. */
+    fun readingSeconds(wpm: Int): Long =
+        if (cues.isNotEmpty()) (cues.last().end - cues.first().start).toLong()
+        else wordCount() * 60L / wpm
+
+    fun preview(): String = blocks().take(3).joinToString(" ")
+
+    fun matches(query: String): Boolean =
+        query.isBlank() || title.contains(query.trim(), ignoreCase = true) ||
+            blocks().any { it.contains(query.trim(), ignoreCase = true) }
 }
 
 /** "Мой ролик.ru.srt" becomes "Мой ролик.ru". */

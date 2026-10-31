@@ -10,9 +10,9 @@ import androidx.compose.runtime.setValue
 import org.json.JSONArray
 import java.io.File
 
-private const val SAMPLE = """Это пример текста. Чтобы выбрать другой, нажмите на название сценария вверху слева.
+private const val SAMPLE = """Это пример текста. Чтобы взять другой, нажмите «Выбрать» внизу.
 
-Читайте по красной стрелке. Текст движется сам, а скорость меняется кнопками внизу.
+Читайте по зелёной линии. Текст движется сам, а скорость меняется кнопками внизу.
 
 Нажмите на текст, чтобы поставить его на паузу. Потяните пальцем, чтобы перемотать.
 
@@ -34,6 +34,9 @@ class PrompterState(context: Context) {
     var countdown by mutableIntStateOf(prefs.getInt("countdown", 3))
     var quality by mutableIntStateOf(prefs.getInt("quality", 1080))
     var frontCamera by mutableStateOf(prefs.getBoolean("front", true))
+    var loudVoice by mutableStateOf(prefs.getBoolean("loudVoice", true))
+    var textColor by mutableIntStateOf(prefs.getInt("textColor", 0))
+    var welcomed by mutableStateOf(prefs.getBoolean("welcomed", false))
 
     var scenarios by mutableStateOf(loadScenarios())
         private set
@@ -115,9 +118,8 @@ class PrompterState(context: Context) {
         updateActive()
     }
 
-    fun nudgeSpeed(dir: Int) {
-        if (timed) tempo = (tempo + dir * 5).coerceIn(50, 200)
-        else wpm = (wpm + dir * 10).coerceIn(50, 300)
+    fun setSpeed(value: Int) {
+        if (timed) tempo = value.coerceIn(50, 200) else wpm = value.coerceIn(50, 300)
         save()
     }
 
@@ -247,7 +249,8 @@ class PrompterState(context: Context) {
         prefs.edit()
             .putInt("wpm", wpm).putInt("tempo", tempo).putInt("size", size).putInt("panel", panel)
             .putInt("dim", dim).putBoolean("mirror", mirror).putInt("countdown", countdown)
-            .putInt("quality", quality).putBoolean("front", frontCamera)
+            .putInt("quality", quality).putBoolean("front", frontCamera).putBoolean("loudVoice", loudVoice)
+            .putInt("textColor", textColor).putBoolean("welcomed", welcomed)
             .putString("current", currentId)
             .apply()
     }

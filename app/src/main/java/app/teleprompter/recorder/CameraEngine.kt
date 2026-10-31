@@ -5,6 +5,7 @@ import android.annotation.SuppressLint
 import android.content.ContentValues
 import android.content.Context
 import android.content.pm.PackageManager
+import android.media.MediaRecorder
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
@@ -36,7 +37,7 @@ class CameraEngine(private val context: Context, private val owner: LifecycleOwn
     private var videoCapture: VideoCapture<Recorder>? = null
     private var recording: Recording? = null
 
-    fun bind(front: Boolean, quality: Int, onError: (String) -> Unit) {
+    fun bind(front: Boolean, quality: Int, loudVoice: Boolean, onError: (String) -> Unit) {
         val future = ProcessCameraProvider.getInstance(context)
         future.addListener({
             val provider = future.get()
@@ -46,7 +47,14 @@ class CameraEngine(private val context: Context, private val owner: LifecycleOwn
                 else -> Quality.FHD
             }
             val selector = QualitySelector.from(target, FallbackStrategy.lowerQualityOrHigherThan(target))
-            val capture = VideoCapture.withOutput(Recorder.Builder().setQualitySelector(selector).build())
+            // The CameraX default, CAMCORDER, has no automatic gain, so speech comes out quiet.
+            val audioSource = if (loudVoice) {
+                MediaRecorder.AudioSource.VOICE_COMMUNICATION
+            } else {
+                MediaRecorder.AudioSource.CAMCORDER
+            }
+            val recorder = Recorder.Builder().setQualitySelector(selector).setAudioSource(audioSource).build()
+            val capture = VideoCapture.withOutput(recorder)
             val preview = Preview.Builder().build().also { it.surfaceProvider = previewView.surfaceProvider }
             val camera = if (front) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA
             try {

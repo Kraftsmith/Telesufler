@@ -80,6 +80,22 @@ class ScenarioStoreTest {
     }
 
     @Test
+    fun searchLooksInTitleAndText() {
+        val s = Scenario(title = "Реклама", text = "Скидки на кофе")
+        assertTrue(s.matches(""))
+        assertTrue(s.matches("рекл"))
+        assertTrue(s.matches(" КОФЕ "))
+        assertFalse(s.matches("чай"))
+    }
+
+    @Test
+    fun readingTimeComesFromSubtitlesOrSpeed() {
+        assertEquals(60L, Scenario(text = "один два три четыре пять").readingSeconds(5))
+        val timed = Scenario(cues = listOf(Cue(5.0, 7.0, "а"), Cue(8.0, 95.0, "б")))
+        assertEquals(90L, timed.readingSeconds(130))
+    }
+
+    @Test
     fun blankTitleStillHasAName() {
         assertEquals("Без названия", Scenario(title = "  ").displayTitle)
     }

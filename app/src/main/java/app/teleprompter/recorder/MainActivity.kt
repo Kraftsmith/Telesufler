@@ -8,7 +8,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.ui.graphics.Color
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -21,11 +20,15 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme(
                 colorScheme = darkColorScheme(
-                    primary = Color(0xFFFFC24A),
-                    onPrimary = Color(0xFF0C0E12),
-                    surface = Color(0xFF171A21),
-                    surfaceContainerLow = Color(0xFF171A21),
-                    background = Color(0xFF0C0E12),
+                    primary = Accent,
+                    onPrimary = OnAccent,
+                    surface = CardColor,
+                    surfaceContainerLow = CardColor,
+                    surfaceContainerHigh = CardRaised,
+                    background = Ink,
+                    onSurface = Fg,
+                    onSurfaceVariant = Muted,
+                    outline = Line,
                 ),
             ) {
                 MainScreen(state, engine)

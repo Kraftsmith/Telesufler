@@ -3,5 +3,5 @@
     <style name="Theme.Teleprompter" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@android:color/black</item>
     </style>
-    <color name="icon_background">#0C0E12</color>
+    <color name="icon_background">#0F131A</color>
 </resources>
