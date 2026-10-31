@@ -1,0 +1,36 @@
+# Teleprompter
+
+Телесуфлёр для Android с записью видео. Загружает субтитры SRT и VTT, текст TXT, снимает на переднюю или заднюю камеру. Текст в видео не попадает. Готовые дубли сразу лежат в галерее, в папке `Movies/Teleprompter`.
+
+## Устройство
+
+Kotlin, Jetpack Compose, CameraX. Минимальная версия Android 6.0.
+
+| Файл | Что делает |
+| --- | --- |
+| `Subtitles.kt` | Разбор SRT и VTT, определение кодировки |
+| `Timeline.kt` | Перевод времени субтитров в позицию текста и обратно |
+| `PrompterState.kt` | Текст, прокрутка, настройки |
+| `CameraEngine.kt` | Просмотр с камеры и запись |
+| `MainScreen.kt` | Интерфейс |
+
+## Сборка
+
+Инструменты стоят в `%USERPROFILE%\AndroidDev`. Путь к SDK задан в `local.properties`, этот файл не хранится в git.
+
+```powershell
+$env:JAVA_HOME = "$env:USERPROFILE\AndroidDev\jdk"
+.\gradlew.bat testDebugUnitTest assembleDebug
+```
+
+APK появится в `app\build\outputs\apk\debug\app-debug.apk`.
+
+Несжатая сборка на 8 МБ зависала при установке на Galaxy S10, сборка на 1,6 МБ ставится и работает. Точная причина не выяснена, поэтому сжатие кода, фильтр архитектур и обычную упаковку нативных библиотек в `app/build.gradle.kts` лучше не отключать.
+
+Релизная сборка для установки на телефон:
+
+```powershell
+.\gradlew.bat assembleRelease
+```
+
+Она подписывается ключом `%USERPROFILE%\AndroidDev\sufler-release.jks`, пароль лежит в `keystore.properties`. Оба файла не хранятся в git. Сделайте их резервную копию: без этого ключа обновления не встанут поверх уже установленного приложения.
