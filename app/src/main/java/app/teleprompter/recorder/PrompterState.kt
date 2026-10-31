@@ -8,9 +8,9 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import org.json.JSONArray
-import org.json.JSONObject
+import java.io.File
 
-private const val SAMPLE = """Это пример текста. Замените его своим: нажмите «Текст» вверху слева.
+private const val SAMPLE = """Это пример текста. Чтобы выбрать другой, нажмите на название сценария вверху слева.
 
 Читайте по красной стрелке. Текст движется сам, а скорость меняется кнопками внизу.
 
@@ -23,6 +23,7 @@ private const val SAMPLE = """Это пример текста. Замените
 /** Everything the screen shows about the script: its text, scroll position and settings. */
 class PrompterState(context: Context) {
     private val prefs = context.getSharedPreferences("teleprompter", Context.MODE_PRIVATE)
+    private val store = ScenarioStore(File(context.filesDir, "scenarios"))
 
     var wpm by mutableIntStateOf(prefs.getInt("wpm", 130))
     var tempo by mutableIntStateOf(prefs.getInt("tempo", 100))
@@ -34,14 +35,17 @@ class PrompterState(context: Context) {
     var quality by mutableIntStateOf(prefs.getInt("quality", 1080))
     var frontCamera by mutableStateOf(prefs.getBoolean("front", true))
 
-    var text by mutableStateOf(prefs.getString("text", SAMPLE) ?: SAMPLE)
+    var scenarios by mutableStateOf(loadScenarios())
         private set
-    var cues by mutableStateOf(loadCues())
+    var currentId by mutableStateOf(
+        prefs.getString("current", null)?.takeIf { id -> scenarios.any { it.id == id } } ?: scenarios.first().id,
+    )
         private set
-    var fileName by mutableStateOf(prefs.getString("file", "") ?: "")
-        private set
-    var useTimecodes by mutableStateOf(prefs.getBoolean("timed", false) && cues.isNotEmpty())
-        private set
+
+    val current: Scenario get() = scenarios.first { it.id == currentId }
+    val text: String get() = current.text
+    val cues: List<Cue> get() = current.cues
+    val fileName: String get() = current.fileName
 
     var running by mutableStateOf(false)
     var pos by mutableFloatStateOf(0f)
@@ -54,19 +58,12 @@ class PrompterState(context: Context) {
     private var height = 0f
     private var timeline = Timeline(emptyList(), emptyList(), 0f)
 
-    val timed: Boolean get() = useTimecodes && cues.isNotEmpty()
+    val timed: Boolean get() = current.useTimecodes && cues.isNotEmpty()
 
-    var blocks by mutableStateOf(computeBlocks())
+    var blocks by mutableStateOf(current.blocks())
         private set
-    var words by mutableIntStateOf(countWords())
+    var words by mutableIntStateOf(current.wordCount().coerceAtLeast(1))
         private set
-
-    private fun computeBlocks(): List<String> =
-        if (cues.isNotEmpty()) cues.map { it.text }
-        else text.split('\n').map { it.trim() }.filter { it.isNotEmpty() }
-
-    private fun countWords(): Int =
-        computeBlocks().sumOf { b -> b.split(Regex("""\s+""")).count { it.isNotEmpty() } }.coerceAtLeast(1)
 
     /** Expected reading time in seconds. */
     val duration: Double
@@ -125,36 +122,86 @@ class PrompterState(context: Context) {
     }
 
     fun setPlainText(value: String) {
-        text = value
-        cues = emptyList()
-        fileName = ""
-        useTimecodes = false
+        updateCurrent { it.copy(text = value, cues = emptyList(), fileName = "", useTimecodes = false) }
         restart()
     }
 
+    /** Replaces the content of the current scenario with a file. */
     fun loadFile(name: String, raw: String) {
-        val parsed = parseSubtitles(raw)
-        fileName = name
-        cues = parsed
-        text = if (parsed.isEmpty()) raw else ""
-        useTimecodes = parsed.isNotEmpty()
+        val loaded = scenarioFromFile(name, raw)
+        updateCurrent {
+            it.copy(
+                title = if (it.title == DEFAULT_TITLE) loaded.title else it.title,
+                text = loaded.text,
+                cues = loaded.cues,
+                fileName = name,
+                useTimecodes = loaded.useTimecodes,
+            )
+        }
         restart()
     }
 
     fun chooseTimecodes(on: Boolean) {
-        useTimecodes = on && cues.isNotEmpty()
+        updateCurrent { it.copy(useTimecodes = on && it.cues.isNotEmpty()) }
         restart()
     }
 
+    fun rename(title: String) {
+        updateCurrent { it.copy(title = title) }
+    }
+
+    fun select(id: String) {
+        if (id == currentId) return
+        currentId = id
+        save()
+        restart()
+    }
+
+    fun create() {
+        add(Scenario())
+    }
+
+    fun createFromFile(name: String, raw: String) {
+        add(scenarioFromFile(name, raw))
+    }
+
+    fun delete(id: String) {
+        store.delete(id)
+        val rest = scenarios.filter { it.id != id }
+        if (rest.isEmpty()) {
+            scenarios = emptyList()
+            add(Scenario())
+            return
+        }
+        // The list must stay valid for readers of current, so the selection moves first.
+        if (id == currentId) currentId = rest.first().id
+        scenarios = rest
+        save()
+        restart()
+    }
+
+    private fun add(s: Scenario) {
+        store.save(s)
+        scenarios = listOf(s) + scenarios
+        currentId = s.id
+        save()
+        restart()
+    }
+
+    private fun updateCurrent(change: (Scenario) -> Scenario) {
+        val updated = change(current).copy(updatedAt = System.currentTimeMillis())
+        store.save(updated)
+        scenarios = (scenarios.filter { it.id != updated.id } + updated).sortedByDescending { it.updatedAt }
+    }
+
     private fun restart() {
-        blocks = computeBlocks()
-        words = countWords()
+        blocks = current.blocks()
+        words = current.wordCount().coerceAtLeast(1)
         running = false
         pos = 0f
         timeline = Timeline(cues, tops, height)
         clock = timeline.startTime
         updateActive()
-        save()
     }
 
     private fun updateActive() {
@@ -173,24 +220,35 @@ class PrompterState(context: Context) {
         active = idx
     }
 
-    private fun loadCues(): List<Cue> {
-        val raw = prefs.getString("cues", null) ?: return emptyList()
-        val arr = runCatching { JSONArray(raw) }.getOrNull() ?: return emptyList()
-        return List(arr.length()) { i ->
-            val o = arr.getJSONObject(i)
-            Cue(o.getDouble("s"), o.getDouble("e"), o.getString("t"))
+    /** First launch after the single-script versions turns the old script into the first scenario. */
+    private fun loadScenarios(): List<Scenario> {
+        store.list().takeIf { it.isNotEmpty() }?.let { return it }
+        val oldText = prefs.getString("text", null)
+        val oldFile = prefs.getString("file", "").orEmpty()
+        val oldCues = prefs.getString("cues", null)
+            ?.let { raw -> runCatching { cuesFromJson(JSONArray(raw)) }.getOrNull() }
+            .orEmpty()
+        val first = when {
+            oldCues.isNotEmpty() || (oldText != null && !oldText.startsWith("Это пример текста")) -> Scenario(
+                title = if (oldFile.isEmpty()) "Мой сценарий" else titleFromFile(oldFile),
+                text = oldText.orEmpty(),
+                cues = oldCues,
+                fileName = oldFile,
+                useTimecodes = prefs.getBoolean("timed", false) && oldCues.isNotEmpty(),
+            )
+            else -> Scenario(title = "Пример", text = SAMPLE)
         }
+        store.save(first)
+        prefs.edit().remove("text").remove("file").remove("cues").remove("timed").apply()
+        return listOf(first)
     }
 
     fun save() {
-        val json = JSONArray()
-        cues.forEach { json.put(JSONObject().put("s", it.start).put("e", it.end).put("t", it.text)) }
         prefs.edit()
             .putInt("wpm", wpm).putInt("tempo", tempo).putInt("size", size).putInt("panel", panel)
             .putInt("dim", dim).putBoolean("mirror", mirror).putInt("countdown", countdown)
             .putInt("quality", quality).putBoolean("front", frontCamera)
-            .putString("text", text).putString("file", fileName)
-            .putString("cues", json.toString()).putBoolean("timed", useTimecodes)
+            .putString("current", currentId)
             .apply()
     }
 }

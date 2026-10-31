@@ -59,6 +59,14 @@ class CameraEngine(private val context: Context, private val owner: LifecycleOwn
         }, ContextCompat.getMainExecutor(context))
     }
 
+    fun unbind() {
+        val future = ProcessCameraProvider.getInstance(context)
+        future.addListener({
+            future.get().unbindAll()
+            videoCapture = null
+        }, ContextCompat.getMainExecutor(context))
+    }
+
     @SuppressLint("MissingPermission")
     fun start(
         onProgress: (seconds: Long) -> Unit,

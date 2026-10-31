@@ -19,8 +19,8 @@ android {
         // Below 24 so the APK also carries a v1 signature, like the build that installed on a Galaxy S10.
         minSdk = 23
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.0.1"
+        versionCode = 5
+        versionName = "1.3.0"
         resourceConfigurations += listOf("ru", "en")
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")
@@ -82,4 +82,5 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
 }

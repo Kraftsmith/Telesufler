@@ -6,8 +6,10 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.OpenableColumns
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -29,11 +31,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -52,6 +57,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -62,15 +68,22 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -80,6 +93,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.text.DateFormat
+import java.util.Date
 import java.util.Locale
 
 private val Ink = Color(0xFF0C0E12)
@@ -89,6 +104,7 @@ private val Tally = Color(0xFFFF3B30)
 private val CueColor = Color(0xFFFFC24A)
 private val Chip = Color(0xD9171A21)
 
+private enum class Step { Start, Choose, Studio }
 private enum class Sheet { None, Script, Settings, Take }
 private enum class RecState { Idle, Counting, Recording }
 
@@ -100,6 +116,7 @@ fun MainScreen(st: PrompterState, engine: CameraEngine) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
+    var step by remember { mutableStateOf(Step.Start) }
     var sheet by remember { mutableStateOf(Sheet.None) }
     var rec by remember { mutableStateOf(RecState.Idle) }
     var seconds by remember { mutableLongStateOf(0L) }
@@ -108,6 +125,8 @@ fun MainScreen(st: PrompterState, engine: CameraEngine) {
     var message by remember { mutableStateOf("") }
     var takeUri by remember { mutableStateOf<Uri?>(null) }
     var takeInterrupted by remember { mutableStateOf(false) }
+    var fileToNewScenario by remember { mutableStateOf(false) }
+    var takes by remember { mutableStateOf<List<Take>>(emptyList()) }
     var cameraGranted by remember {
         mutableStateOf(context.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED)
     }
@@ -120,7 +139,7 @@ fun MainScreen(st: PrompterState, engine: CameraEngine) {
             else -> ""
         }
     }
-    LaunchedEffect(Unit) {
+    fun askPermissions() {
         val wanted = buildList {
             add(Manifest.permission.CAMERA)
             add(Manifest.permission.RECORD_AUDIO)
@@ -128,8 +147,16 @@ fun MainScreen(st: PrompterState, engine: CameraEngine) {
         }
         permissions.launch(wanted.toTypedArray())
     }
-    LaunchedEffect(cameraGranted, st.frontCamera, st.quality) {
-        if (cameraGranted) engine.bind(st.frontCamera, st.quality) { message = it }
+    // The camera runs only on the shooting step, so the first two steps do not drain the battery.
+    LaunchedEffect(step, cameraGranted, st.frontCamera, st.quality) {
+        if (step != Step.Studio) engine.unbind()
+        else if (cameraGranted) engine.bind(st.frontCamera, st.quality) { message = it }
+    }
+    LaunchedEffect(step) {
+        if (step == Step.Start) takes = withContext(Dispatchers.IO) { queryTakes(context) }
+    }
+    BackHandler(enabled = step != Step.Start && rec == RecState.Idle && sheet == Sheet.None) {
+        step = if (step == Step.Studio) Step.Choose else Step.Start
     }
 
     // Uses real frame time, so dropped frames do not make the text lag behind its timecodes.
@@ -207,19 +234,54 @@ fun MainScreen(st: PrompterState, engine: CameraEngine) {
             }
             if (raw.isNullOrBlank()) message = "Файл пустой." else {
                 message = ""
-                st.loadFile(name, raw)
+                if (fileToNewScenario) {
+                    st.createFromFile(name, raw)
+                    if (step == Step.Choose) step = Step.Studio
+                } else {
+                    st.loadFile(name, raw)
+                }
             }
         }
     }
 
-    Box(Modifier.fillMaxSize().background(Color.Black)) {
+    when (step) {
+        Step.Start -> Dashboard(
+            st,
+            takes = takes,
+            message = message,
+            onStart = {
+                askPermissions()
+                step = Step.Choose
+            },
+            onEdit = { sheet = Sheet.Script },
+            onImport = {
+                fileToNewScenario = true
+                filePicker.launch(arrayOf("*/*"))
+            },
+        )
+        Step.Choose -> ChoosePage(
+            st,
+            message = message,
+            onUse = { step = Step.Studio },
+            onEdit = { sheet = Sheet.Script },
+            onImport = {
+                fileToNewScenario = true
+                filePicker.launch(arrayOf("*/*"))
+            },
+        )
+        Step.Studio -> Unit
+    }
+
+    if (step == Step.Studio) Box(Modifier.fillMaxSize().background(Color.Black)) {
         AndroidView(factory = { engine.previewView }, modifier = Modifier.fillMaxSize())
 
         Prompter(st, Modifier.fillMaxWidth().fillMaxHeight(st.panel / 100f))
 
         Column(Modifier.fillMaxSize().safeDrawingPadding().padding(12.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Pill("Текст") { sheet = Sheet.Script }
+                Pill(st.current.displayTitle, Modifier.widthIn(max = 136.dp)) {
+                    if (rec == RecState.Idle) step = Step.Choose
+                }
                 Spacer(Modifier.weight(1f))
                 RecClock(rec == RecState.Recording, seconds)
                 Spacer(Modifier.weight(1f))
@@ -271,9 +333,27 @@ fun MainScreen(st: PrompterState, engine: CameraEngine) {
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 when (sheet) {
-                    Sheet.Script -> ScriptSheet(st) { filePicker.launch(arrayOf("*/*")) }
+                    Sheet.Script -> ScriptSheet(
+                        st,
+                        onPickFile = {
+                            fileToNewScenario = false
+                            filePicker.launch(arrayOf("*/*"))
+                        },
+                        onUse = {
+                            sheet = Sheet.None
+                            step = Step.Studio
+                        },
+                    )
                     Sheet.Settings -> SettingsSheet(st, recording = rec != RecState.Idle)
-                    Sheet.Take -> TakeSheet(takeUri, takeInterrupted) { sheet = Sheet.None }
+                    Sheet.Take -> TakeSheet(
+                        takeUri,
+                        takeInterrupted,
+                        onAgain = { sheet = Sheet.None },
+                        onNewVideo = {
+                            sheet = Sheet.None
+                            step = Step.Start
+                        },
+                    )
                     Sheet.None -> Unit
                 }
             }
@@ -292,7 +372,7 @@ private fun Prompter(st: PrompterState, modifier: Modifier) {
             .pointerInput(Unit) { detectVerticalDragGestures { _, dy -> st.dragBy(dy) } },
     ) {
         val readY = with(density) { maxHeight.toPx() * 0.3f }
-        val blocks = st.blocks
+        val blocks = st.blocks.ifEmpty { listOf("Сценарий пуст. Нажмите на его название вверху слева.") }
         val tops = remember(blocks) { mutableStateListOf<Float>().apply { repeat(blocks.size) { add(0f) } } }
 
         Column(
@@ -339,13 +419,20 @@ private fun Prompter(st: PrompterState, modifier: Modifier) {
 }
 
 @Composable
-private fun Pill(label: String, onClick: () -> Unit) {
+private fun Pill(label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Box(
-        Modifier.height(40.dp).clip(RoundedCornerShape(20.dp)).background(Chip)
+        modifier.height(40.dp).clip(RoundedCornerShape(20.dp)).background(Chip)
             .clickable(onClick = onClick).padding(horizontal = 14.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(label, color = Fg, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+        Text(
+            label,
+            color = Fg,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -416,11 +503,199 @@ private fun Note(text: String) {
 }
 
 @Composable
-private fun ScriptSheet(st: PrompterState, onPickFile: () -> Unit) {
-    val hasCues = st.cues.isNotEmpty()
-    var value by remember { mutableStateOf(if (hasCues) st.cues.joinToString("\n") { it.text } else st.text) }
+private fun Dashboard(
+    st: PrompterState,
+    takes: List<Take>,
+    message: String,
+    onStart: () -> Unit,
+    onEdit: () -> Unit,
+    onImport: () -> Unit,
+) {
+    Column(
+        Modifier.fillMaxSize().background(Ink).safeDrawingPadding().padding(16.dp)
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text("Teleprompter", color = Fg, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+        Button(onClick = onStart, modifier = Modifier.fillMaxWidth().height(64.dp)) {
+            Text("Начать видео", fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+        }
+        if (message.isNotEmpty()) Text(message, color = Tally, fontSize = 15.sp)
 
-    SheetTitle("Текст и субтитры")
+        Spacer(Modifier.height(4.dp))
+        SectionTitle("Видео", takes.size)
+        if (takes.isEmpty()) {
+            Note("Здесь появятся снятые видео.")
+        } else {
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                takes.forEach { TakeCard(it) }
+            }
+        }
+
+        Spacer(Modifier.height(4.dp))
+        SectionTitle("Тексты", st.scenarios.size)
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            OutlinedButton(onClick = onImport, modifier = Modifier.weight(1f)) { Text("Загрузить") }
+            OutlinedButton(
+                onClick = {
+                    st.create()
+                    onEdit()
+                },
+                modifier = Modifier.weight(1f),
+            ) { Text("Написать") }
+        }
+        ScenarioList(st, onPick = onEdit, onEdit = onEdit)
+    }
+}
+
+@Composable
+private fun SectionTitle(title: String, count: Int) {
+    Text("$title: $count", color = Fg, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+}
+
+@Composable
+private fun TakeCard(take: Take) {
+    val context = LocalContext.current
+    val thumbnail by produceState<ImageBitmap?>(null, take.uri) {
+        value = withContext(Dispatchers.IO) { loadThumbnail(context, take)?.asImageBitmap() }
+    }
+    Box(
+        Modifier.size(112.dp, 168.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFF171A21))
+            .clickable {
+                context.startActivity(
+                    Intent(Intent.ACTION_VIEW).setDataAndType(take.uri, "video/mp4")
+                        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),
+                )
+            },
+    ) {
+        thumbnail?.let {
+            Image(it, take.name, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+        }
+        Text(
+            fmt(take.durationMs / 1000),
+            color = Fg,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.align(Alignment.BottomEnd).padding(6.dp)
+                .clip(RoundedCornerShape(6.dp)).background(Chip).padding(horizontal = 6.dp, vertical = 2.dp),
+        )
+    }
+}
+
+@Composable
+private fun ChoosePage(
+    st: PrompterState,
+    message: String,
+    onUse: () -> Unit,
+    onEdit: () -> Unit,
+    onImport: () -> Unit,
+) {
+    Column(
+        Modifier.fillMaxSize().background(Ink).safeDrawingPadding().padding(16.dp)
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text("Какой текст читаем?", color = Fg, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+        Button(onClick = onImport, modifier = Modifier.fillMaxWidth().height(56.dp)) {
+            Text("Загрузить файл: SRT, VTT или TXT")
+        }
+        OutlinedButton(
+            onClick = {
+                st.create()
+                onEdit()
+            },
+            modifier = Modifier.fillMaxWidth().height(56.dp),
+        ) { Text("Написать новый текст") }
+        if (message.isNotEmpty()) Text(message, color = Tally, fontSize = 15.sp)
+
+        Note("Или выберите сохранённый:")
+        ScenarioList(st, onPick = onUse, onEdit = onEdit)
+    }
+}
+
+@Composable
+private fun ScenarioList(st: PrompterState, onPick: () -> Unit, onEdit: () -> Unit) {
+    var deleting by remember { mutableStateOf<Scenario?>(null) }
+    val dates = remember { DateFormat.getDateInstance(DateFormat.MEDIUM) }
+
+    st.scenarios.forEach { s ->
+        val isCurrent = s.id == st.currentId
+        Row(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                .background(if (isCurrent) Color(0xFF2C313B) else Color(0xFF171A21))
+                .clickable {
+                    st.select(s.id)
+                    onPick()
+                }
+                .padding(start = 12.dp, top = 6.dp, bottom = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    s.displayTitle,
+                    color = if (isCurrent) CueColor else Fg,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                val size = if (s.cues.isNotEmpty()) "Реплик: ${s.cues.size}" else "Слов: ${s.wordCount()}"
+                Note("$size, ${dates.format(Date(s.updatedAt))}")
+            }
+            RowAction("✎", "Изменить ${s.displayTitle}") {
+                st.select(s.id)
+                onEdit()
+            }
+            RowAction("✕", "Удалить ${s.displayTitle}") { deleting = s }
+        }
+    }
+
+    deleting?.let { s ->
+        AlertDialog(
+            onDismissRequest = { deleting = null },
+            title = { Text("Удалить «${s.displayTitle}»?") },
+            text = { Text("Сценарий исчезнет насовсем. Снятые видео останутся в галерее.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    st.delete(s.id)
+                    deleting = null
+                }) { Text("Удалить", color = Tally) }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleting = null }) { Text("Отмена") }
+            },
+        )
+    }
+}
+
+@Composable
+private fun RowAction(icon: String, label: String, onClick: () -> Unit) {
+    Box(
+        Modifier.size(44.dp).clip(CircleShape).clickable(onClick = onClick)
+            .semantics(mergeDescendants = true) { contentDescription = label },
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(icon, color = Muted, fontSize = 18.sp, modifier = Modifier.clearAndSetSemantics { })
+    }
+}
+
+@Composable
+private fun ScriptSheet(st: PrompterState, onPickFile: () -> Unit, onUse: () -> Unit) {
+    val hasCues = st.cues.isNotEmpty()
+    var value by remember(st.currentId, st.fileName) {
+        mutableStateOf(if (hasCues) st.cues.joinToString("\n") { it.text } else st.text)
+    }
+
+    SheetTitle("Текст")
+    OutlinedTextField(
+        value = st.current.title,
+        onValueChange = st::rename,
+        label = { Text("Название") },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth(),
+    )
     Button(onClick = onPickFile, modifier = Modifier.fillMaxWidth()) { Text("Загрузить файл: SRT, VTT или TXT") }
     if (st.fileName.isNotEmpty()) {
         Note("Загружен файл ${st.fileName}" + if (hasCues) ": реплик ${st.cues.size}." else ".")
@@ -452,6 +727,7 @@ private fun ScriptSheet(st: PrompterState, onPickFile: () -> Unit) {
         if (st.timed) "Хронометраж ${fmt(st.duration.toLong())}. Текст идёт по времени из субтитров, начиная с первой реплики."
         else "Слов ${st.words}, при ${st.wpm} сл/мин это примерно ${fmt(st.duration.toLong())}.",
     )
+    Button(onClick = onUse, modifier = Modifier.fillMaxWidth().height(56.dp)) { Text("Снимать с этим текстом") }
 }
 
 @Composable
@@ -502,7 +778,7 @@ private fun SettingsSheet(st: PrompterState, recording: Boolean) {
 }
 
 @Composable
-private fun TakeSheet(uri: Uri?, interrupted: Boolean, onClose: () -> Unit) {
+private fun TakeSheet(uri: Uri?, interrupted: Boolean, onAgain: () -> Unit, onNewVideo: () -> Unit) {
     val context = LocalContext.current
     SheetTitle("Дубль готов")
     Note("Видео уже в галерее, в папке Movies/Teleprompter.")
@@ -527,5 +803,8 @@ private fun TakeSheet(uri: Uri?, interrupted: Boolean, onClose: () -> Unit) {
             modifier = Modifier.weight(1f),
         ) { Text("Поделиться") }
     }
-    TextButton(onClick = onClose, modifier = Modifier.fillMaxWidth()) { Text("Записать ещё") }
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        TextButton(onClick = onAgain, modifier = Modifier.weight(1f)) { Text("Ещё дубль") }
+        TextButton(onClick = onNewVideo, modifier = Modifier.weight(1f)) { Text("На главную") }
+    }
 }
