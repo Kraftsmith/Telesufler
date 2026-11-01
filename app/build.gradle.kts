@@ -12,15 +12,16 @@ val keystoreProps = Properties().apply {
 
 android {
     namespace = "app.teleprompter.recorder"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "app.teleprompter.recorder"
         // Below 24 so the APK also carries a v1 signature, like the build that installed on a Galaxy S10.
         minSdk = 23
-        targetSdk = 35
-        versionCode = 9
-        versionName = "1.6.0"
+        // Google Play has required API 36 for new apps and updates since 31 August 2026.
+        targetSdk = 36
+        versionCode = 10
+        versionName = "1.7.0"
         resourceConfigurations += listOf("ru", "en")
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")
