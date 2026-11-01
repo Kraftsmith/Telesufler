@@ -1,4 +1,4 @@
-package app.teleprompter.recorder
+package app.readshot.recorder
 
 import org.json.JSONArray
 import org.json.JSONException

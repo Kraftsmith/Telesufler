@@ -1,4 +1,4 @@
-package app.teleprompter.recorder
+package app.readshot.recorder
 
 /**
  * Maps subtitle time to scroll position and back: a cue scrolls past the reading

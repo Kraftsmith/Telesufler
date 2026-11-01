@@ -1,4 +1,4 @@
-package app.teleprompter.recorder
+package app.readshot.recorder
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse

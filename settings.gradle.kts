@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Teleprompter"
+rootProject.name = "ReadShot"
 include(":app")

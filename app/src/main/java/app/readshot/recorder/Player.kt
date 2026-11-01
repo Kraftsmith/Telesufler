@@ -1,4 +1,4 @@
-package app.teleprompter.recorder
+package app.readshot.recorder
 
 import android.content.Intent
 import android.net.Uri

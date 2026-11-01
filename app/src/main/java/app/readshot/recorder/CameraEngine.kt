@@ -1,4 +1,4 @@
-package app.teleprompter.recorder
+package app.readshot.recorder
 
 import android.Manifest
 import android.annotation.SuppressLint
@@ -85,10 +85,10 @@ class CameraEngine(private val context: Context, private val owner: LifecycleOwn
 
         val stamp = SimpleDateFormat("yyyy-MM-dd-HHmmss", Locale.US).format(Date())
         val values = ContentValues().apply {
-            put(MediaStore.MediaColumns.DISPLAY_NAME, "teleprompter-$stamp")
+            put(MediaStore.MediaColumns.DISPLAY_NAME, "readshot-$stamp")
             put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4")
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                put(MediaStore.MediaColumns.RELATIVE_PATH, "Movies/Teleprompter")
+                put(MediaStore.MediaColumns.RELATIVE_PATH, "Movies/ReadShot")
             }
         }
         val output = MediaStoreOutputOptions

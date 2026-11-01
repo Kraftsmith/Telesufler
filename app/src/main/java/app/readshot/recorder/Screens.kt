@@ -1,4 +1,4 @@
-package app.teleprompter.recorder
+package app.readshot.recorder
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -100,7 +100,7 @@ fun WelcomeScreen(onStart: () -> Unit) {
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 LogoMark()
-                Text("Teleprompter", color = Fg, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+                Text("ReadShot", color = Fg, fontSize = 30.sp, fontWeight = FontWeight.Bold)
             }
             Text("Говорите свободно. Снимайте быстрее. Записывайте уверенные видео с одного дубля.", color = Muted, fontSize = 17.sp)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -201,7 +201,7 @@ fun TextsTab(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             LogoMark(36.dp)
-            Text("Teleprompter", color = Fg, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            Text("ReadShot", color = Fg, fontSize = 22.sp, fontWeight = FontWeight.Bold)
         }
         OutlinedTextField(
             value = query,
@@ -468,7 +468,7 @@ fun SettingsTab(st: PrompterState) {
         SettingsContent(st, recording = false)
         val context = LocalContext.current
         val version = remember { context.packageManager.getPackageInfo(context.packageName, 0).versionName }
-        Note("Teleprompter $version")
+        Note("ReadShot $version")
         Spacer(Modifier.height(24.dp))
     }
 }

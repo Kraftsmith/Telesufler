@@ -11,17 +11,17 @@ val keystoreProps = Properties().apply {
 }
 
 android {
-    namespace = "app.teleprompter.recorder"
+    namespace = "app.readshot.recorder"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "app.teleprompter.recorder"
+        applicationId = "app.readshot.recorder"
         // Below 24 so the APK also carries a v1 signature, like the build that installed on a Galaxy S10.
         minSdk = 23
         // Google Play has required API 36 for new apps and updates since 31 August 2026.
         targetSdk = 36
-        versionCode = 10
-        versionName = "1.7.0"
+        versionCode = 11
+        versionName = "1.8.0"
         resourceConfigurations += listOf("ru", "en")
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")

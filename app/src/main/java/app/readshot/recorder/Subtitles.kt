@@ -1,4 +1,4 @@
-package app.teleprompter.recorder
+package app.readshot.recorder
 
 import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException

@@ -1,4 +1,4 @@
-package app.teleprompter.recorder
+package app.readshot.recorder
 
 import android.content.ContentUris
 import android.content.Context
@@ -25,7 +25,7 @@ fun queryTakes(context: Context): List<Take> {
         collection,
         projection,
         "${MediaStore.Video.Media.DISPLAY_NAME} LIKE ?",
-        arrayOf("teleprompter-%"),
+        arrayOf("readshot-%"),
         "${MediaStore.Video.Media.DATE_ADDED} DESC",
     )?.use { c ->
         while (c.moveToNext()) {

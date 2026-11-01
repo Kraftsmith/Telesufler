@@ -1,4 +1,4 @@
-package app.teleprompter.recorder
+package app.readshot.recorder
 
 import android.Manifest
 import android.content.Intent
@@ -592,7 +592,7 @@ private fun TakeSheet(
 ) {
     val context = LocalContext.current
     SheetTitle("Дубль готов")
-    Note("Видео уже в галерее, в папке Movies/Teleprompter.")
+    Note("Видео уже в галерее, в папке Movies/ReadShot.")
     if (interrupted) Note("Запись прервалась раньше времени. Сохранено то, что успело записаться.")
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Button(onClick = onWatch, modifier = Modifier.weight(1f)) { Text("Посмотреть") }

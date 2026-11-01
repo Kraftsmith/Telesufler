@@ -1,4 +1,4 @@
-package app.teleprompter.recorder
+package app.readshot.recorder
 
 import android.content.Context
 import androidx.compose.runtime.getValue
@@ -22,7 +22,7 @@ private const val SAMPLE = """Это пример текста. Чтобы вз�
 
 /** Everything the screen shows about the script: its text, scroll position and settings. */
 class PrompterState(context: Context) {
-    private val prefs = context.getSharedPreferences("teleprompter", Context.MODE_PRIVATE)
+    private val prefs = context.getSharedPreferences("readshot", Context.MODE_PRIVATE)
     private val store = ScenarioStore(File(context.filesDir, "scenarios"))
 
     var wpm by mutableIntStateOf(prefs.getInt("wpm", 130))
